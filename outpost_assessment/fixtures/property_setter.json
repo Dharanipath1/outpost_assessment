@@ -1,0 +1,18 @@
+[
+ {
+  "default_value": null,
+  "doc_type": "Stock Reservation Entry",
+  "docstatus": 0,
+  "doctype": "Property Setter",
+  "doctype_or_field": "DocField",
+  "field_name": "voucher_type",
+  "is_system_generated": 0,
+  "modified": "2026-05-21 18:14:36.701293",
+  "module": "Outpost Assessment",
+  "name": "Stock Reservation Entry-voucher_type-options",
+  "property": "options",
+  "property_type": "Select",
+  "row_name": null,
+  "value": "\nSales Order\nWork Order\nProduction Request"
+ }
+]

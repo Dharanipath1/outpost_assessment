@@ -1,0 +1,19 @@
+{
+ "standard": "Yes",
+ "name": "attendance-dashboard",
+ "page_name": "attendance-dashboard",
+ "title": "Attendance Dashboard",
+ "module": "Outpost Assessment",
+ "doctype": "Page",
+ "roles": [
+  {
+   "role": "System Manager"
+  },
+  {
+   "role": "HR Manager"
+  },
+  {
+   "role": "HR User"
+  }
+ ]
+}

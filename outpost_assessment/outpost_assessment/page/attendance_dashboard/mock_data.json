@@ -1,0 +1,122 @@
+[
+	{
+		"worker_id": "EMP-001",
+		"name": "Karthikeyan M",
+		"department": "Engineering",
+		"days_present": 23,
+		"total_days": 24,
+		"attendance_percentage": 95.83
+	},
+	{
+		"worker_id": "EMP-002",
+		"name": "Divya S",
+		"department": "Operations",
+		"days_present": 16,
+		"total_days": 24,
+		"attendance_percentage": 66.67
+	},
+	{
+		"worker_id": "EMP-003",
+		"name": "Vignesh R",
+		"department": "Sales",
+		"days_present": 22,
+		"total_days": 24,
+		"attendance_percentage": 91.67
+	},
+	{
+		"worker_id": "EMP-004",
+		"name": "Priya K",
+		"department": "HR",
+		"days_present": 24,
+		"total_days": 24,
+		"attendance_percentage": 100.00
+	},
+	{
+		"worker_id": "EMP-005",
+		"name": "Muthu V",
+		"department": "Engineering",
+		"days_present": 15,
+		"total_days": 24,
+		"attendance_percentage": 62.50
+	},
+	{
+		"worker_id": "EMP-006",
+		"name": "Sneha P",
+		"department": "Quality Assurance",
+		"days_present": 21,
+		"total_days": 24,
+		"attendance_percentage": 87.50
+	},
+	{
+		"worker_id": "EMP-007",
+		"name": "Arun Kumar",
+		"department": "Operations",
+		"days_present": 17,
+		"total_days": 24,
+		"attendance_percentage": 70.83
+	},
+	{
+		"worker_id": "EMP-008",
+		"name": "Nithya T",
+		"department": "Engineering",
+		"days_present": 24,
+		"total_days": 24,
+		"attendance_percentage": 100.00
+	},
+	{
+		"worker_id": "EMP-009",
+		"name": "Balaji G",
+		"department": "Sales",
+		"days_present": 19,
+		"total_days": 24,
+		"attendance_percentage": 79.17
+	},
+	{
+		"worker_id": "EMP-010",
+		"name": "Kaviya M",
+		"department": "Marketing",
+		"days_present": 23,
+		"total_days": 24,
+		"attendance_percentage": 95.83
+	},
+	{
+		"worker_id": "EMP-011",
+		"name": "Rajesh K",
+		"department": "Quality Assurance",
+		"days_present": 14,
+		"total_days": 24,
+		"attendance_percentage": 58.33
+	},
+	{
+		"worker_id": "EMP-012",
+		"name": "Anjali S",
+		"department": "HR",
+		"days_present": 22,
+		"total_days": 24,
+		"attendance_percentage": 91.67
+	},
+	{
+		"worker_id": "EMP-013",
+		"name": "Surya V",
+		"department": "Engineering",
+		"days_present": 20,
+		"total_days": 24,
+		"attendance_percentage": 83.33
+	},
+	{
+		"worker_id": "EMP-014",
+		"name": "Deepa R",
+		"department": "Operations",
+		"days_present": 23,
+		"total_days": 24,
+		"attendance_percentage": 95.83
+	},
+	{
+		"worker_id": "EMP-015",
+		"name": "Ramesh P",
+		"department": "Sales",
+		"days_present": 16,
+		"total_days": 24,
+		"attendance_percentage": 66.67
+	}
+]

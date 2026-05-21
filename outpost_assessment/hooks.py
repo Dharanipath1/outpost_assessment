@@ -247,3 +247,9 @@ app_license = "mit"
 # List of apps whose translatable strings should be excluded from this app's translations.
 # ignore_translatable_strings_from = []
 
+ignore_links_on_delete = ["Payment Webhook Log"]
+scheduler_events = {
+    "hourly": [
+        "outpost_assessment.tasks.retry_failed_webhooks"
+    ]
+}

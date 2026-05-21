@@ -1,0 +1,326 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "naming_series:",
+ "creation": "2026-05-19 15:00:00",
+ "default_view": "List",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "section_break_progress",
+  "production_progress",
+  "section_break_metadata",
+  "naming_series",
+  "posting_date",
+  "posting_time",
+  "priority",
+  "column_break_metadata_2",
+  "company",
+  "customer",
+  "required_date",
+  "status",
+  "section_break_warehouses",
+  "fg_warehouse",
+  "column_break_warehouses_2",
+  "sub_assembly_warehouse",
+  "column_break_warehouses_3",
+  "rm_warehouse",
+  "column_break_rqvy",
+  "wip_warehouse",
+  "section_break_daoo",
+  "items",
+  "section_break_grids",
+  "get_sub_assembly_items",
+  "section_break_sub_table",
+  "sub_assemblies",
+  "raw_materials_items_section",
+  "get_raw_material",
+  "section_break_rm_table",
+  "material_requirements",
+  "amended_from",
+  "connections_tab"
+ ],
+ "fields": [
+  {
+   "fieldname": "section_break_metadata",
+   "fieldtype": "Section Break",
+   "label": "Information"
+  },
+  {
+   "default": "PROD-REQ-.YYYY.-.#####",
+   "fieldname": "naming_series",
+   "fieldtype": "Select",
+   "label": "Series",
+   "options": "PROD-REQ-.YYYY.-.#####",
+   "reqd": 1
+  },
+  {
+   "default": "Today",
+   "fieldname": "posting_date",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "label": "Posting Date",
+   "reqd": 1
+  },
+  {
+   "fieldname": "posting_time",
+   "fieldtype": "Time",
+   "label": "Posting Time",
+   "reqd": 1
+  },
+  {
+   "default": "Medium",
+   "fieldname": "priority",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Priority",
+   "options": "Low\nMedium\nHigh",
+   "reqd": 1
+  },
+  {
+   "fieldname": "required_date",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "label": "Required Date",
+   "reqd": 1
+  },
+  {
+   "fieldname": "column_break_metadata_2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "label": "Company",
+   "options": "Company",
+   "reqd": 1
+  },
+  {
+   "fieldname": "customer",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Customer",
+   "options": "Customer",
+   "reqd": 1
+  },
+  {
+   "default": "Draft",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Status",
+   "options": "\nDraft\nSubmitted\nNot Started\nPartially Started\nIn Process\nPartially Completed\nCompleted\nCancelled",
+   "read_only": 1
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "section_break_warehouses",
+   "fieldtype": "Section Break",
+   "label": "Default Warehouses"
+  },
+  {
+   "default": "Finished Goods - T",
+   "fieldname": "fg_warehouse",
+   "fieldtype": "Link",
+   "label": "Finished Goods Warehouse",
+   "options": "Warehouse",
+   "reqd": 1
+  },
+  {
+   "fieldname": "column_break_warehouses_2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "Work In Progress - T",
+   "fieldname": "sub_assembly_warehouse",
+   "fieldtype": "Link",
+   "label": "Sub Assembly Warehouse",
+   "options": "Warehouse",
+   "reqd": 1
+  },
+  {
+   "fieldname": "column_break_warehouses_3",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "Stores - T",
+   "fieldname": "rm_warehouse",
+   "fieldtype": "Link",
+   "label": "Raw Materials Warehouse",
+   "options": "Warehouse",
+   "reqd": 1
+  },
+  {
+   "fieldname": "section_break_daoo",
+   "fieldtype": "Section Break",
+   "label": "Items to Manufacture"
+  },
+  {
+   "fieldname": "items",
+   "fieldtype": "Table",
+   "label": "Production Items",
+   "options": "Production Request Item",
+   "reqd": 1
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "section_break_progress",
+   "fieldtype": "Section Break",
+   "label": "Production Progress"
+  },
+  {
+   "fieldname": "production_progress",
+   "fieldtype": "HTML"
+  },
+  {
+   "fieldname": "section_break_grids",
+   "fieldtype": "Section Break",
+   "hide_border": 1,
+   "label": "Sub Assembly Items"
+  },
+  {
+   "fieldname": "get_sub_assembly_items",
+   "fieldtype": "Button",
+   "label": "Get Sub Assembly Items"
+  },
+  {
+   "fieldname": "section_break_sub_table",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "sub_assemblies",
+   "fieldtype": "Table",
+   "label": "Sub Assemblies",
+   "options": "Production Request Sub Assembly"
+  },
+  {
+   "fieldname": "raw_materials_items_section",
+   "fieldtype": "Section Break",
+   "hide_border": 1,
+   "label": "Raw Materials Items"
+  },
+  {
+   "fieldname": "get_raw_material",
+   "fieldtype": "Button",
+   "label": "Get Raw Materials"
+  },
+  {
+   "fieldname": "section_break_rm_table",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "material_requirements",
+   "fieldtype": "Table",
+   "label": "Required Materials",
+   "options": "Production Request Material"
+  },
+  {
+   "fieldname": "amended_from",
+   "fieldtype": "Link",
+   "label": "Amended From",
+   "options": "Production Request",
+   "print_hide": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_rqvy",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "Work In Progress - T",
+   "fieldname": "wip_warehouse",
+   "fieldtype": "Link",
+   "label": "Work-in-Progress Warehouse",
+   "options": "Warehouse",
+   "reqd": 1
+  },
+  {
+   "fieldname": "connections_tab",
+   "fieldtype": "Tab Break",
+   "label": "Connections",
+   "show_dashboard": 1
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "is_submittable": 1,
+ "links": [],
+ "modified": "2026-05-21 12:38:40.561494",
+ "modified_by": "Administrator",
+ "module": "Outpost Assessment",
+ "name": "Production Request",
+ "naming_rule": "By \"Naming Series\" field",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "cancel": 1,
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "submit": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "role": "Manufacturing User",
+   "share": 1,
+   "submit": 1,
+   "write": 1
+  },
+  {
+   "amend": 1,
+   "cancel": 1,
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Manufacturing Manager",
+   "share": 1,
+   "submit": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [
+  {
+   "color": "Red",
+   "title": "Draft"
+  },
+  {
+   "color": "Blue",
+   "title": "Submitted"
+  },
+  {
+   "color": "Light Blue",
+   "title": "Not Started"
+  },
+  {
+   "color": "Purple",
+   "title": "In Process"
+  },
+  {
+   "color": "Green",
+   "title": "Complete"
+  },
+  {
+   "color": "Red",
+   "title": "Cancelled"
+  }
+ ],
+ "track_changes": 1
+}

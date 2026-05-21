@@ -43,7 +43,12 @@ app_license = "mit"
 # page_js = {"page" : "public/js/file.js"}
 
 # include js in doctype views
-# doctype_js = {"doctype" : "public/js/doctype.js"}
+doctype_js = {
+	"Work Order": "outpost_assessment/client_scripts/work_order.js"
+}
+doctype_list_js = {
+	"Production Request": "outpost_assessment/doctype/production_request/production_request_list.js"
+}
 # doctype_list_js = {"doctype" : "public/js/doctype_list.js"}
 # doctype_tree_js = {"doctype" : "public/js/doctype_tree.js"}
 # doctype_calendar_js = {"doctype" : "public/js/doctype_calendar.js"}
@@ -83,7 +88,8 @@ app_license = "mit"
 # ------------
 
 # before_install = "outpost_assessment.install.before_install"
-# after_install = "outpost_assessment.install.after_install"
+after_install = "outpost_assessment.outpost_assessment.setup.create_custom_fields"
+after_migrate = "outpost_assessment.outpost_assessment.setup.create_custom_fields"
 
 # Uninstallation
 # ------------
@@ -137,13 +143,24 @@ app_license = "mit"
 # ---------------
 # Hook on document methods and events
 
-# doc_events = {
-# 	"*": {
-# 		"on_update": "method",
-# 		"on_cancel": "method",
-# 		"on_trash": "method"
-# 	}
-# }
+doc_events = {
+	"Work Order": {
+		"on_update": "outpost_assessment.outpost_assessment.doctype.production_request.production_request.update_production_request_status"
+	},
+	"Stock Entry": {
+		"before_insert": "outpost_assessment.outpost_assessment.overrides.stock_reservation.map_reservations_to_stock_entry",
+		"before_submit": "outpost_assessment.outpost_assessment.overrides.stock_reservation.consume_reservation_on_stock_entry",
+		"on_submit": "outpost_assessment.outpost_assessment.doctype.production_request.production_request.update_pr_status_from_stock_entry",
+		"on_cancel": [
+            "outpost_assessment.outpost_assessment.overrides.stock_reservation.restore_reservation_on_stock_entry_cancel",
+            "outpost_assessment.outpost_assessment.doctype.production_request.production_request.update_pr_status_from_stock_entry"
+        ]
+	},
+    "Purchase Order": {
+        "on_update": "outpost_assessment.tasks.notify_po_rejection"
+    }
+}
+
 
 # Scheduled Tasks
 # ---------------
@@ -181,10 +198,10 @@ app_license = "mit"
 # each overriding function accepts a `data` argument;
 # generated from the base implementation of the doctype dashboard,
 # along with any modifications made in other Frappe apps
-# override_doctype_dashboards = {
-# 	"Task": "outpost_assessment.task.get_dashboard_data"
-# }
-
+override_doctype_dashboards = {
+    "Work Order": ("outpost_assessment.outpost_assessment.overrides.work_order.get_data"),
+    "Stock Entry": ("outpost_assessment.outpost_assessment.overrides.stock_entry.get_data"),
+}
 # exempt linked doctypes from being automatically cancelled
 #
 # auto_cancel_exempted_doctypes = ["Auto Repeat"]
@@ -192,7 +209,7 @@ app_license = "mit"
 # Ignore links to specified DocTypes when deleting documents
 # -----------------------------------------------------------
 
-# ignore_links_on_delete = ["Communication", "ToDo"]
+ignore_links_on_delete = ["Payment Webhook Log"]
 
 # Request Events
 # ----------------
@@ -247,9 +264,18 @@ app_license = "mit"
 # List of apps whose translatable strings should be excluded from this app's translations.
 # ignore_translatable_strings_from = []
 
-ignore_links_on_delete = ["Payment Webhook Log"]
 scheduler_events = {
-    "hourly": [
-        "outpost_assessment.tasks.retry_failed_webhooks"
-    ]
+	"hourly": [
+		"outpost_assessment.tasks.retry_failed_webhooks"
+	],
+	"daily": [
+		"outpost_assessment.tasks.send_delayed_work_order_reminders",
+		"outpost_assessment.tasks.send_po_approval_reminders"
+	]
 }
+
+fixtures = [
+    {"dt": "Custom Field", "filters": [["module", "=", "Outpost Assessment"]]},
+    {"dt": "Property Setter", "filters": [["module", "=", "Outpost Assessment"]]}
+]
+

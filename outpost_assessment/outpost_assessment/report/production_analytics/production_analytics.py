@@ -100,7 +100,7 @@ def get_columns():
     ]
 
 def get_data(filters):
-    conditions = ["docstatus < 2", "status != 'Cancelled'"] # Include Draft and Submitted documents, exclude Cancelled
+    conditions = ["docstatus < 2", "status != 'Cancelled'"] 
     values = {}
     
     if filters and filters.get("company"):
@@ -136,16 +136,74 @@ def get_data(filters):
         ORDER BY creation DESC
     """, values, as_dict=True)
     
+    if not prod_reqs:
+        return []
+
+    pr_names = [pr.name for pr in prod_reqs]
+    
+    all_materials = frappe.get_all(
+        "Production Request Material",
+        filters={"parent": ["in", pr_names]},
+        fields=["parent", "raw_material", "shortage_qty"]
+    )
+    materials_by_pr = {}
+    for m in all_materials:
+        materials_by_pr.setdefault(m.parent, []).append(m)
+
+    all_items = frappe.get_all(
+        "Production Request Item",
+        filters={"parent": ["in", pr_names]},
+        fields=["parent", "item", "production_qty"]
+    )
+    if filters and filters.get("item_code"):
+        all_items = [i for i in all_items if i.item == filters.get("item_code")]
+
+    items_by_pr = {}
+    for i in all_items:
+        items_by_pr.setdefault(i.parent, []).append(i)
+
+    all_sub_assemblies = frappe.get_all(
+        "Production Request Sub Assembly",
+        filters={"parent": ["in", pr_names]},
+        fields=["parent", "sub_assembly as item", "produce_qty as production_qty"]
+    )
+    if filters and filters.get("item_code"):
+        all_sub_assemblies = [sa for sa in all_sub_assemblies if sa.item == filters.get("item_code")]
+
+    sub_assemblies_by_pr = {}
+    for sa in all_sub_assemblies:
+        sub_assemblies_by_pr.setdefault(sa.parent, []).append(sa)
+
+    work_orders = frappe.db.sql("""
+        SELECT production_request, production_item, status, produced_qty, docstatus
+        FROM `tabWork Order`
+        WHERE production_request IN %s AND docstatus < 2
+        ORDER BY creation DESC
+    """, (pr_names,), as_dict=True)
+
+    wo_status_map = {}
+    wo_completed_map = {}
+    for wo in work_orders:
+        key = (wo.production_request, wo.production_item)
+        if key not in wo_status_map:
+            wo_status_map[key] = wo.status
+        if wo.docstatus == 1:
+            wo_completed_map[key] = wo_completed_map.get(key, 0.0) + (wo.produced_qty or 0.0)
+
+    unique_items = list(set([item.item for item in all_items] + [sa.item for sa in all_sub_assemblies]))
+    item_name_map = {}
+    if unique_items:
+        item_names = frappe.get_all("Item", filters={"name": ["in", unique_items]}, fields=["name", "item_name"])
+        item_name_map = {d.name: d.item_name for d in item_names}
+
     data = []
     today_date = getdate(today())
     
     for pr in prod_reqs:
-        # Age Calculation
         posting_date = getdate(pr.posting_date)
         age = date_diff(today_date, posting_date)
         
-        # Calculate Material Shortages for the entire Production Request
-        materials = frappe.get_all("Production Request Material", filters={"parent": pr.name}, fields=["raw_material", "shortage_qty"])
+        materials = materials_by_pr.get(pr.name, [])
         shortage_map = {}
         for m in materials:
             if m.shortage_qty > 0:
@@ -153,43 +211,20 @@ def get_data(filters):
         
         shortages_str = ", ".join([f"{rm} ({qty:.2f})" for rm, qty in shortage_map.items()]) if shortage_map else _("None")
         
-        # Fetch items and sub-assemblies
-        items = frappe.get_all("Production Request Item", filters={"parent": pr.name}, fields=["item", "production_qty"])
-        if filters and filters.get("item_code"):
-            items = [i for i in items if i.item == filters.get("item_code")]
-
-        sub_assemblies = frappe.get_all("Production Request Sub Assembly", filters={"parent": pr.name}, fields=["sub_assembly as item", "produce_qty as production_qty"])
-        if filters and filters.get("item_code"):
-            sub_assemblies = [sa for sa in sub_assemblies if sa.item == filters.get("item_code")]
-
-        all_items = items + sub_assemblies
+        pr_items = items_by_pr.get(pr.name, []) + sub_assemblies_by_pr.get(pr.name, [])
         
-        for item in all_items:
-            # Fetch Work Order Status
-            wo_info = frappe.db.sql("""
-                SELECT status
-                FROM `tabWork Order`
-                WHERE production_request = %s AND production_item = %s AND docstatus < 2
-                ORDER BY creation DESC LIMIT 1
-            """, (pr.name, item.item))
-            
-            wo_status = wo_info[0][0] if wo_info else "Not Created"
+        for item in pr_items:
+            wo_status = wo_status_map.get((pr.name, item.item), "Not Created")
             
             if filters and filters.get("status") and wo_status != filters.get("status"):
                 continue
 
-            # Aggregate completed quantity from Work Orders
-            completed = frappe.db.sql("""
-                SELECT SUM(produced_qty) as completed
-                FROM `tabWork Order`
-                WHERE production_request = %s AND production_item = %s AND docstatus = 1
-            """, (pr.name, item.item))[0][0] or 0.0
-            
+            completed = wo_completed_map.get((pr.name, item.item), 0.0)
             planned = item.production_qty or 0.0
             pending = max(0.0, planned - completed)
             progress = (completed / planned * 100) if planned > 0 else 0.0
             
-            item_name = frappe.db.get_value("Item", item.item, "item_name") or item.item
+            item_name = item_name_map.get(item.item, item.item)
 
             data.append({
                 "production_request": pr.name,
@@ -209,5 +244,3 @@ def get_data(filters):
             })
             
     return data
-
-

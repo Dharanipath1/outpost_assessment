@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 import frappe
 from frappe import _
 from frappe.model.document import Document
@@ -20,23 +18,51 @@ class ProductionRequest(Document):
         if not self.items:
             frappe.throw(_("Please add at least one Item to the Production Items table."))
 
+        item_ids = list(set(row.item for row in self.items if row.item))
+        
+        item_meta_map = {}
+        item_bom_map = {}
+
+        if item_ids:
+            items_data = frappe.get_all(
+                "Item",
+                filters={"name": ["in", item_ids]},
+                fields=["name", "item_name", "stock_uom"]
+            )
+            item_meta_map = {d.name: d for d in items_data}
+
+            boms_data = frappe.get_all(
+                "BOM",
+                filters={
+                    "item": ["in", item_ids],
+                    "is_active": 1,
+                    "docstatus": 1
+                },
+                fields=["name", "item"],
+                order_by="creation desc"
+            )
+            for b in boms_data:
+                if b.item not in item_bom_map:
+                    item_bom_map[b.item] = b.name
+
         for row in self.items:
             if not row.required_date:
                 row.required_date = self.required_date
             if flt(row.production_qty) <= 0:
                 frappe.throw(_("Quantity for Item {0} must be greater than zero.").format(row.item))
                 
-            if not row.item_name or not row.stock_uom:
-                details = frappe.db.get_value("Item", row.item, ["item_name", "stock_uom"], as_dict=True)
-                if details:
-                    row.item_name = details.item_name
-                    row.stock_uom = details.stock_uom
+            meta = item_meta_map.get(row.item)
+            if meta:
+                if not row.item_name:
+                    row.item_name = meta.item_name
+                if not row.stock_uom:
+                    row.stock_uom = meta.stock_uom
                     
             if not row.fg_warehouse:
                 row.fg_warehouse = self.fg_warehouse
 
             if not row.bom_no:
-                row.bom_no = frappe.db.get_value("BOM", {"item": row.item, "is_active": 1, "docstatus": 1}, "name")
+                row.bom_no = item_bom_map.get(row.item)
 
             if self.docstatus == 1 and not row.bom_no:
                 frappe.throw(_("No active and submitted BOM exists for Item: {0}").format(row.item))
@@ -50,7 +76,6 @@ class ProductionRequest(Document):
         self.set("sub_assemblies", [])
         
         requirements = {}
-        sub_assemblies_map = {}
         sub_assemblies_flat_list = []
         
         parent_items = [row.item for row in self.items]
@@ -65,29 +90,52 @@ class ProductionRequest(Document):
             if row.bom_no:
                 bom_doc = frappe.get_doc("BOM", row.bom_no)
                 bom_qty = flt(bom_doc.quantity) or 1.0
-                available_fg_stock = get_available_stock(row.item, row_fg_wh)
                 net_fg_needed = flt(row.production_qty)
                 
                 if net_fg_needed > 0.0:
+                    bom_items_to_check = [b.item_code for b in bom_doc.items if b.item_code]
+                    child_bom_map = {}
+                    
+                    if bom_items_to_check:
+                        child_boms = frappe.get_all(
+                            "BOM",
+                            filters={
+                                "item": ["in", bom_items_to_check],
+                                "is_active": 1,
+                                "docstatus": 1
+                            },
+                            fields=["name", "item"],
+                            order_by="creation desc"
+                        )
+                        for cb in child_boms:
+                            if cb.item not in child_bom_map:
+                                child_bom_map[cb.item] = cb.name
+
                     for bom_item in bom_doc.items:
                         item_qty_needed = (flt(bom_item.qty) / bom_qty) * net_fg_needed
-                        child_bom = frappe.db.get_value("BOM", {"item": bom_item.item_code, "is_active": 1, "docstatus": 1}, "name")
+                        child_bom = child_bom_map.get(bom_item.item_code)
                         if child_bom:
                             get_sub_assemblies_flat(bom_item.item_code, item_qty_needed, self.sub_assembly_warehouse, sub_assemblies_flat_list)
                 
-        for raw_mat, req_qty in requirements.items():
-            if raw_mat in parent_items:
-                continue
-            avail_qty = get_available_stock(raw_mat, self.rm_warehouse)
-            shortage = max(0.0, req_qty - avail_qty)
-            self.append("material_requirements", {
-                "raw_material": raw_mat,
-                "item_name": frappe.db.get_value("Item", raw_mat, "item_name"),
-                "required_qty": req_qty,
-                "available_qty": avail_qty,
-                "shortage_qty": shortage,
-                "rm_warehouse": self.rm_warehouse
-            })
+        if requirements:
+            raw_mat_keys = [rm for rm in requirements.keys() if rm not in parent_items]
+            item_names = {}
+            if raw_mat_keys:
+                item_names = dict(frappe.get_all("Item", filters={"name": ["in", raw_mat_keys]}, fields=["name", "item_name"], as_list=1))
+
+            for raw_mat, req_qty in requirements.items():
+                if raw_mat in parent_items:
+                    continue
+                avail_qty = get_available_stock(raw_mat, self.rm_warehouse)
+                shortage = max(0.0, req_qty - avail_qty)
+                self.append("material_requirements", {
+                    "raw_material": raw_mat,
+                    "item_name": item_names.get(raw_mat),
+                    "required_qty": req_qty,
+                    "available_qty": avail_qty,
+                    "shortage_qty": shortage,
+                    "rm_warehouse": self.rm_warehouse
+                })
             
         for item in sub_assemblies_flat_list:
             self.append("sub_assemblies", {
@@ -103,21 +151,33 @@ class ProductionRequest(Document):
         self.calculate_material_requirements()
 
         shortages = []
-        for row in self.material_requirements:
-            if flt(row.shortage_qty) > 0:
-                needed_for = []
-                for pr_item in self.items:
-                    if pr_item.bom_no and frappe.db.exists("BOM Item", {"parent": pr_item.bom_no, "item_code": row.raw_material}):
-                        needed_for.append(pr_item.item)
-                        
-                shortages.append({
-                    "item_code": row.raw_material,
-                    "item_name": row.item_name or frappe.db.get_value("Item", row.raw_material, "item_name"),
-                    "required_qty": row.required_qty,
-                    "available_qty": row.available_qty,
-                    "shortage_qty": row.shortage_qty,
-                    "used_by": ", ".join(list(set(needed_for)))
-                })
+        if self.material_requirements:
+            rm_items = [row.raw_material for row in self.material_requirements if flt(row.shortage_qty) > 0]
+            bom_ids = [pr_item.bom_no for pr_item in self.items if pr_item.bom_no]
+            
+            bom_items_exists = []
+            if rm_items and bom_ids:
+                bom_items_exists = frappe.get_all(
+                    "BOM Item",
+                    filters={"parent": ["in", bom_ids], "item_code": ["in", rm_items]},
+                    fields=["parent", "item_code"]
+                )
+            
+            for row in self.material_requirements:
+                if flt(row.shortage_qty) > 0:
+                    needed_for = []
+                    for pr_item in self.items:
+                        if pr_item.bom_no and any(x.parent == pr_item.bom_no and x.item_code == row.raw_material for x in bom_items_exists):
+                            needed_for.append(pr_item.item)
+                            
+                    shortages.append({
+                        "item_code": row.raw_material,
+                        "item_name": row.item_name,
+                        "required_qty": row.required_qty,
+                        "available_qty": row.available_qty,
+                        "shortage_qty": row.shortage_qty,
+                        "used_by": ", ".join(list(set(needed_for)))
+                    })
 
         if shortages:
             shortage_html = (
@@ -125,7 +185,7 @@ class ProductionRequest(Document):
                 "<table class='table table-bordered' style='width:100%; border-collapse: collapse; border: 1px solid #d1d8e0;'>"
             )
             shortage_html += (
-                f"<tr style='background-color: #f5f6fa;'>"
+                f"<tr style='background-color: #f5f6fapx;'>"
                 f"<th style='padding: 10px; border: 1px solid #d1d8e0; text-align: left;'>{_('Raw Material')}</th>"
                 f"<th style='padding: 10px; border: 1px solid #d1d8e0; text-align: left;'>{_('Item Name')}</th>"
                 f"<th style='padding: 10px; border: 1px solid #d1d8e0; text-align: right;'>{_('Required Qty')}</th>"
@@ -324,13 +384,30 @@ def get_bom_requirements_by_bom(bom_no, qty_needed, rm_warehouse, fg_warehouse, 
     bom_qty = flt(bom_doc.quantity) or 1.0
     
     target_wh = fg_warehouse if is_top_level else sub_assembly_warehouse
-    available_stock = get_available_stock(bom_doc.item, target_wh)
     net_needed = qty_needed
     
     if net_needed > 0.0:
+        bom_items_to_check = [b.item_code for b in bom_doc.items if b.item_code]
+        child_bom_map = {}
+        
+        if bom_items_to_check:
+            child_boms = frappe.get_all(
+                "BOM",
+                filters={
+                    "item": ["in", bom_items_to_check],
+                    "is_active": 1,
+                    "docstatus": 1
+                },
+                fields=["name", "item"],
+                order_by="creation desc"
+            )
+            for cb in child_boms:
+                if cb.item not in child_bom_map:
+                    child_bom_map[cb.item] = cb.name
+
         for bom_item in bom_doc.items:
             item_qty_needed = (flt(bom_item.qty) / bom_qty) * net_needed
-            child_bom = frappe.db.get_value("BOM", {"item": bom_item.item_code, "is_active": 1, "docstatus": 1}, "name")
+            child_bom = child_bom_map.get(bom_item.item_code)
             if child_bom:
                 get_bom_requirements_by_bom(child_bom, item_qty_needed, rm_warehouse, fg_warehouse, sub_assembly_warehouse, False, requirements)
             else:
@@ -364,9 +441,27 @@ def get_sub_assemblies(item_code, qty_needed, sub_assembly_warehouse, sub_assemb
     if net_needed > 0.0:
         bom_doc = frappe.get_doc("BOM", bom_no)
         bom_qty = flt(bom_doc.quantity) or 1.0
+        
+        bom_items_to_check = [b.item_code for b in bom_doc.items if b.item_code]
+        child_bom_map = {}
+        if bom_items_to_check:
+            child_boms = frappe.get_all(
+                "BOM",
+                filters={
+                    "item": ["in", bom_items_to_check],
+                    "is_active": 1,
+                    "docstatus": 1
+                },
+                fields=["name", "item"],
+                order_by="creation desc"
+            )
+            for cb in child_boms:
+                if cb.item not in child_bom_map:
+                    child_bom_map[cb.item] = cb.name
+
         for bom_item in bom_doc.items:
             item_qty_needed = (flt(bom_item.qty) / bom_qty) * net_needed
-            child_bom = frappe.db.get_value("BOM", {"item": bom_item.item_code, "is_active": 1, "docstatus": 1}, "name")
+            child_bom = child_bom_map.get(bom_item.item_code)
             if child_bom:
                 get_sub_assemblies(bom_item.item_code, item_qty_needed, sub_assembly_warehouse, sub_assemblies)
                 
@@ -395,9 +490,27 @@ def get_sub_assemblies_flat(item_code, qty_needed, sub_assembly_warehouse, lst=N
     if net_needed > 0.0:
         bom_doc = frappe.get_doc("BOM", bom_no)
         bom_qty = flt(bom_doc.quantity) or 1.0
+        
+        bom_items_to_check = [b.item_code for b in bom_doc.items if b.item_code]
+        child_bom_map = {}
+        if bom_items_to_check:
+            child_boms = frappe.get_all(
+                "BOM",
+                filters={
+                    "item": ["in", bom_items_to_check],
+                    "is_active": 1,
+                    "docstatus": 1
+                },
+                fields=["name", "item"],
+                order_by="creation desc"
+            )
+            for cb in child_boms:
+                if cb.item not in child_bom_map:
+                    child_bom_map[cb.item] = cb.name
+
         for bom_item in bom_doc.items:
             item_qty_needed = (flt(bom_item.qty) / bom_qty) * net_needed
-            child_bom = frappe.db.get_value("BOM", {"item": bom_item.item_code, "is_active": 1, "docstatus": 1}, "name")
+            child_bom = child_bom_map.get(bom_item.item_code)
             if child_bom:
                 get_sub_assemblies_flat(bom_item.item_code, item_qty_needed, sub_assembly_warehouse, lst)
                 
@@ -405,10 +518,6 @@ def get_sub_assemblies_flat(item_code, qty_needed, sub_assembly_warehouse, lst=N
 
 
 def update_production_request_status(doc, method=None):
-    """
-    Hook function triggered when a Work Order is updated.
-    Dynamically tracks produced_qty and updates the Production Request status.
-    """
     parent_name = doc.get("production_request")
     if not parent_name:
         if doc.description:
@@ -478,10 +587,6 @@ def update_production_request_status(doc, method=None):
             frappe.logger().info(f"Production Request {parent_name} status updated to {new_status}")
 
 def update_pr_status_from_stock_entry(doc, method=None):
-    """
-    Hook function triggered when a Stock Entry is submitted or cancelled.
-    If the Stock Entry is linked to a Work Order, re-evaluate the Production Request status.
-    """
     if doc.work_order:
         try:
             wo_doc = frappe.get_doc("Work Order", doc.work_order)
@@ -502,19 +607,26 @@ def get_items_from_sales_order(sales_order):
     )
     
     valid_items = []
-    for item in items:
-        item_group = frappe.db.get_value("Item", item.item_code, "item_group")
-        if item_group in ("Product", "Products"):
-            has_bom = frappe.db.exists("BOM", {"item": item.item_code, "is_active": 1, "docstatus": 1})
-            if has_bom:
-                valid_items.append({
-                    "item": item.item_code,
-                    "item_name": item.item_name,
-                    "stock_uom": item.uom,
-                    "production_qty": item.qty,
-                    "required_date": item.delivery_date or today(),
-                    "bom_no": has_bom
-                })
+    item_codes = list(set(item.item_code for item in items if item.item_code))
+    
+    if item_codes:
+        item_groups = dict(frappe.get_all("Item", filters={"name": ["in", item_codes]}, fields=["name", "item_group"], as_list=1))
+        boms = frappe.get_all("BOM", filters={"item": ["in", item_codes], "is_active": 1, "docstatus": 1}, fields=["name", "item"])
+        bom_map = {b.item: b.name for b in boms}
+        
+        for item in items:
+            group = item_groups.get(item.item_code)
+            if group in ("Product", "Products"):
+                has_bom = bom_map.get(item.item_code)
+                if has_bom:
+                    valid_items.append({
+                        "item": item.item_code,
+                        "item_name": item.item_name,
+                        "stock_uom": item.uom,
+                        "production_qty": item.qty,
+                        "required_date": item.delivery_date or today(),
+                        "bom_no": has_bom
+                    })
             
     return valid_items
 
@@ -531,29 +643,34 @@ def get_items_from_material_request(material_request):
     )
     
     valid_items = []
-    for item in items:
-        item_group = frappe.db.get_value("Item", item.item_code, "item_group")
-        if item_group in ("Product", "Products"):
-            has_bom = frappe.db.exists("BOM", {"item": item.item_code, "is_active": 1, "docstatus": 1})
-            if has_bom:
-                valid_items.append({
-                    "item": item.item_code,
-                    "item_name": item.item_name,
-                    "stock_uom": item.uom,
-                    "production_qty": item.qty,
-                    "required_date": item.schedule_date or today(),
-                    "bom_no": has_bom
-                })
+    item_codes = list(set(item.item_code for item in items if item.item_code))
+    
+    if item_codes:
+        item_groups = dict(frappe.get_all("Item", filters={"name": ["in", item_codes]}, fields=["name", "item_group"], as_list=1))
+        boms = frappe.get_all("BOM", filters={"item": ["in", item_codes], "is_active": 1, "docstatus": 1}, fields=["name", "item"])
+        bom_map = {b.item: b.name for b in boms}
+        
+        for item in items:
+            group = item_groups.get(item.item_code)
+            if group in ("Product", "Products"):
+                has_bom = bom_map.get(item.item_code)
+                if has_bom:
+                    valid_items.append({
+                        "item": item.item_code,
+                        "item_name": item.item_name,
+                        "stock_uom": item.uom,
+                        "production_qty": item.qty,
+                        "required_date": item.schedule_date or today(),
+                        "bom_no": has_bom
+                    })
             
     return valid_items
-
 
 
 @frappe.whitelist()
 def run_get_sub_assembly_items(doc):
     d = frappe.get_doc(frappe.parse_json(doc))
     d.set("sub_assemblies", [])
-    sub_assemblies_map = {}
     sub_assemblies_flat_list = []
     
     for row in d.items:
@@ -562,13 +679,29 @@ def run_get_sub_assembly_items(doc):
         row_fg_wh = row.fg_warehouse or d.fg_warehouse
         bom_doc = frappe.get_doc("BOM", row.bom_no)
         bom_qty = flt(bom_doc.quantity) or 1.0
-        available_fg_stock = get_available_stock(row.item, row_fg_wh)
         net_fg_needed = flt(row.production_qty)
         
         if net_fg_needed > 0.0:
+            bom_items_to_check = [b.item_code for b in bom_doc.items if b.item_code]
+            child_bom_map = {}
+            if bom_items_to_check:
+                child_boms = frappe.get_all(
+                    "BOM",
+                    filters={
+                        "item": ["in", bom_items_to_check],
+                        "is_active": 1,
+                        "docstatus": 1
+                    },
+                    fields=["name", "item"],
+                    order_by="creation desc"
+                )
+                for cb in child_boms:
+                    if cb.item not in child_bom_map:
+                        child_bom_map[cb.item] = cb.name
+
             for bom_item in bom_doc.items:
                 item_qty_needed = (flt(bom_item.qty) / bom_qty) * net_fg_needed
-                child_bom = frappe.db.get_value("BOM", {"item": bom_item.item_code, "is_active": 1, "docstatus": 1}, "name")
+                child_bom = child_bom_map.get(bom_item.item_code)
                 if child_bom:
                     get_sub_assemblies_flat(bom_item.item_code, item_qty_needed, d.sub_assembly_warehouse, sub_assemblies_flat_list)
 
@@ -585,9 +718,6 @@ def run_get_sub_assembly_items(doc):
     return d.get("sub_assemblies")
 
 
-
-
-
 @frappe.whitelist()
 def run_get_raw_material(doc):
     d = frappe.get_doc(frappe.parse_json(doc))
@@ -601,23 +731,27 @@ def run_get_raw_material(doc):
         row_fg_wh = row.fg_warehouse or d.fg_warehouse
         get_bom_requirements_by_bom(row.bom_no, flt(row.production_qty), d.rm_warehouse, row_fg_wh, d.sub_assembly_warehouse, True, requirements)
         
-    for raw_mat, req_qty in requirements.items():
-        if raw_mat in parent_items:
-            continue
-        avail_qty = get_available_stock(raw_mat, d.rm_warehouse)
-        shortage = max(0.0, req_qty - avail_qty)
-        d.append("material_requirements", {
-            "raw_material": raw_mat,
-            "item_name": frappe.db.get_value("Item", raw_mat, "item_name"),
-            "required_qty": req_qty,
-            "available_qty": avail_qty,
-            "shortage_qty": shortage,
-            "rm_warehouse": d.rm_warehouse
-        })
+    if requirements:
+        raw_mat_keys = [rm for rm in requirements.keys() if rm not in parent_items]
+        item_names = {}
+        if raw_mat_keys:
+            item_names = dict(frappe.get_all("Item", filters={"name": ["in", raw_mat_keys]}, fields=["name", "item_name"], as_list=1))
+
+        for raw_mat, req_qty in requirements.items():
+            if raw_mat in parent_items:
+                continue
+            avail_qty = get_available_stock(raw_mat, d.rm_warehouse)
+            shortage = max(0.0, req_qty - avail_qty)
+            d.append("material_requirements", {
+                "raw_material": raw_mat,
+                "item_name": item_names.get(raw_mat),
+                "required_qty": req_qty,
+                "available_qty": avail_qty,
+                "shortage_qty": shortage,
+                "rm_warehouse": d.rm_warehouse
+            })
         
     return d.get("material_requirements")
-
-
 
 
 @frappe.whitelist()
@@ -642,6 +776,6 @@ def item_query_filter(doctype, txt, searchfield, start, page_len, filters):
         query = query.where(
             (item.name.like(f"%{txt}%")) | (item.item_name.like(f"%{txt}%"))
         )
-        
+    
     query = query.orderby(item.name).limit(page_len).offset(start)
     return query.run()

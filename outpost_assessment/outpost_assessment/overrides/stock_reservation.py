@@ -5,10 +5,6 @@ from frappe.utils import flt
 
 @frappe.whitelist()
 def check_reservation_status(work_order_name):
-    """
-    Returns the count of active (submitted) Stock Reservation Entries for this Work Order
-    and the list of item reservations.
-    """
     sres = frappe.get_all(
         "Stock Reservation Entry",
         filters={
@@ -25,9 +21,6 @@ def check_reservation_status(work_order_name):
 
 @frappe.whitelist()
 def reserve_stock_for_work_order(work_order_name):
-    """
-    Creates and submits Stock Reservation Entry records for raw materials in the Work Order.
-    """
     wo = frappe.get_doc("Work Order", work_order_name)
     if wo.docstatus != 1:
         frappe.throw(_("Work Order must be submitted to reserve stock."))
@@ -37,10 +30,21 @@ def reserve_stock_for_work_order(work_order_name):
     for r in existing_sres:
         reserved_qtys[r["item_code"]] = reserved_qtys.get(r["item_code"], 0.0) + flt(r["reserved_qty"])
 
+    item_codes = list(set(row.item_code for row in wo.required_items if row.item_code))
+    
+    item_details = {}
+    if item_codes:
+        items_data = frappe.get_all(
+            "Item",
+            filters={"name": ["in", item_codes]},
+            fields=["name", "is_stock_item", "stock_uom"]
+        )
+        item_details = {d.name: d for d in items_data}
+
     created_any = False
     for row in wo.required_items:
-        is_stock_item = frappe.db.get_value("Item", row.item_code, "is_stock_item")
-        if not is_stock_item:
+        meta = item_details.get(row.item_code)
+        if not meta or not meta.get("is_stock_item"):
             continue
 
         required_qty = flt(row.required_qty)
@@ -66,7 +70,7 @@ def reserve_stock_for_work_order(work_order_name):
         sre.voucher_detail_no = row.name
         sre.voucher_qty = required_qty
         sre.reserved_qty = reserve_qty
-        sre.stock_uom = row.stock_uom or frappe.db.get_value("Item", row.item_code, "stock_uom")
+        sre.stock_uom = row.stock_uom or meta.get("stock_uom")
         sre.company = wo.company
         sre.available_qty = available_qty
         sre.insert(ignore_permissions=True)
@@ -83,9 +87,6 @@ def reserve_stock_for_work_order(work_order_name):
 
 @frappe.whitelist()
 def unreserve_stock_for_work_order(work_order_name):
-    """
-    Cancels all active Stock Reservation Entries for this Work Order.
-    """
     sres = frappe.get_all(
         "Stock Reservation Entry",
         filters={
@@ -103,9 +104,6 @@ def unreserve_stock_for_work_order(work_order_name):
 
 @frappe.whitelist()
 def map_reservations_to_stock_entry(doc, method=None):
-    """
-    Map the Work Order Stock Reservation Entries to the Stock Entry Detail rows explicitly.
-    """
     if doc.purpose == "Material Transfer for Manufacture" and doc.work_order:
         sres = frappe.get_all(
             "Stock Reservation Entry",
@@ -130,13 +128,10 @@ def map_reservations_to_stock_entry(doc, method=None):
             if key in sre_map and not row.get("against_stock_reservation_entry"):
                 sre = sre_map[key][0]
                 row.against_stock_reservation_entry = sre.name
-                row.original_item_name = sre.voucher_detail_no  # cache the Work Order Item name if needed
+                row.original_item_name = sre.voucher_detail_no
 
 @frappe.whitelist()
 def consume_reservation_on_stock_entry(doc, method=None):
-    """
-    Consume Work Order stock reservations when a Material Transfer for Manufacture is being submitted.
-    """
     if doc.purpose == "Material Transfer for Manufacture" and doc.work_order:
         for row in doc.get("items"):
             sre_name = row.get("against_stock_reservation_entry")
@@ -158,9 +153,6 @@ def consume_reservation_on_stock_entry(doc, method=None):
 
 @frappe.whitelist()
 def restore_reservation_on_stock_entry_cancel(doc, method=None):
-    """
-    Restore Work Order stock reservations when a Material Transfer for Manufacture is cancelled.
-    """
     if doc.purpose == "Material Transfer for Manufacture" and doc.work_order:
         for row in doc.get("items"):
             sre_name = row.get("against_stock_reservation_entry")
@@ -182,9 +174,6 @@ def restore_reservation_on_stock_entry_cancel(doc, method=None):
 
 @frappe.whitelist()
 def reserve_stock_for_production_request(pr_name):
-    """
-    Creates and submits Stock Reservation Entry records for raw materials in the Production Request.
-    """
     pr = frappe.get_doc("Production Request", pr_name)
     if pr.docstatus != 1:
         frappe.throw(_("Production Request must be submitted to reserve stock."))
@@ -202,10 +191,21 @@ def reserve_stock_for_production_request(pr_name):
     for r in existing_sres:
         reserved_qtys[r["item_code"]] = reserved_qtys.get(r["item_code"], 0.0) + flt(r["reserved_qty"])
 
+    item_codes = list(set(row.raw_material for row in pr.material_requirements if row.raw_material))
+    
+    item_details = {}
+    if item_codes:
+        items_data = frappe.get_all(
+            "Item",
+            filters={"name": ["in", item_codes]},
+            fields=["name", "is_stock_item", "stock_uom"]
+        )
+        item_details = {d.name: d for d in items_data}
+
     created_any = False
     for row in pr.material_requirements:
-        is_stock_item = frappe.db.get_value("Item", row.raw_material, "is_stock_item")
-        if not is_stock_item:
+        meta = item_details.get(row.raw_material)
+        if not meta or not meta.get("is_stock_item"):
             continue
 
         required_qty = flt(row.required_qty)
@@ -231,7 +231,7 @@ def reserve_stock_for_production_request(pr_name):
         sre.voucher_detail_no = row.name
         sre.voucher_qty = required_qty
         sre.reserved_qty = reserve_qty
-        sre.stock_uom = frappe.db.get_value("Item", row.raw_material, "stock_uom")
+        sre.stock_uom = meta.get("stock_uom")
         sre.company = pr.company
         sre.available_qty = available_qty
         sre.insert(ignore_permissions=True)

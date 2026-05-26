@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted } from "vue";
+import { ref, computed, onMounted, watch } from "vue";
 import mockData from "./mock_data.json";
 
 // State
@@ -12,6 +12,10 @@ const sortColumn = ref("attendance_percentage");
 const sortDirection = ref("desc"); // 'asc' or 'desc'
 const loading = ref(true);
 const errorMessage = ref("");
+
+// Pagination State
+const currentPage = ref(1);
+const pageSize = ref(10); // Standard pagination chunk (10 records per page)
 
 // Fetch data from backend API with fallback to imported mock data
 const fetchAttendanceData = async () => {
@@ -83,24 +87,50 @@ const resetAllFilters = () => {
 	selectedDepartment.value = "All";
 	selectedRange.value = "All";
 	activeQuickFilter.value = "all";
+	currentPage.value = 1;
 };
 
-// CSV Export function
+// Reset page on filter modifications
+watch([searchQuery, selectedDepartment, selectedRange, activeQuickFilter], () => {
+	currentPage.value = 1;
+});
+
+// Department custom styling helper
+const getDepartmentBadgeStyle = (dept) => {
+	const colors = {
+		"Engineering": "background-color: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe;",
+		"Operations": "background-color: #fef3c7; color: #b45309; border: 1px solid #fde68a;",
+		"Sales": "background-color: #ecfdf5; color: #047857; border: 1px solid #a7f3d0;",
+		"HR": "background-color: #faf5ff; color: #6b21a8; border: 1px solid #e9d5ff;",
+		"Quality Assurance": "background-color: #fff1f2; color: #be123c; border: 1px solid #fecdd3;",
+		"Marketing": "background-color: #f0fdfa; color: #0f766e; border: 1px solid #99f6e4;"
+	};
+	return colors[dept] || "background-color: #f1f5f9; color: #475569; border: 1px solid #cbd5e1;";
+};
+
+// CSV Export function using modern Blob API
 const exportToCSV = () => {
-	let csvContent = "data:text/csv;charset=utf-8,";
-	csvContent += "Worker ID,Worker Name,Department,Days Present,Total Days,Attendance %\n";
+	let csvContent = "\ufeffWorker ID,Worker Name,Department,Days Present,Total Days,Attendance %\n";
 	
 	filteredAndSortedWorkers.value.forEach(w => {
-		csvContent += `"${w.worker_id}","${w.name}","${w.department}",${w.days_present},${w.total_days},${w.attendance_percentage}\n`;
+		const escapedName = (w.name || "").replace(/"/g, '""');
+		const escapedDept = (w.department || "").replace(/"/g, '""');
+		csvContent += `"${w.worker_id}","${escapedName}","${escapedDept}",${w.days_present},${w.total_days},${w.attendance_percentage}\n`;
 	});
 	
-	const encodedUri = encodeURI(csvContent);
+	const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
 	const link = document.createElement("a");
-	link.setAttribute("href", encodedUri);
-	link.setAttribute("download", `attendance_report_${new Date().toISOString().slice(0, 10)}.csv`);
-	document.body.appendChild(link);
-	link.click();
-	document.body.removeChild(link);
+	if (navigator.msSaveBlob) { // IE 10+
+		navigator.msSaveBlob(blob, `attendance_report_${new Date().toISOString().slice(0, 10)}.csv`);
+	} else {
+		const url = URL.createObjectURL(blob);
+		link.setAttribute("href", url);
+		link.setAttribute("download", `attendance_report_${new Date().toISOString().slice(0, 10)}.csv`);
+		link.style.visibility = "hidden";
+		document.body.appendChild(link);
+		link.click();
+		document.body.removeChild(link);
+	}
 	
 	if (typeof frappe !== "undefined" && frappe.show_alert) {
 		frappe.show_alert({message: "CSV Report Downloaded Successfully", indicator: "green"});
@@ -115,8 +145,8 @@ const filteredAndSortedWorkers = computed(() => {
 	if (searchQuery.value.trim() !== "") {
 		const q = searchQuery.value.toLowerCase();
 		list = list.filter(w => 
-			w.name.toLowerCase().includes(q) || 
-			w.worker_id.toLowerCase().includes(q)
+			(w.name && w.name.toLowerCase().includes(q)) || 
+			(w.worker_id && w.worker_id.toLowerCase().includes(q))
 		);
 	}
 
@@ -145,14 +175,14 @@ const filteredAndSortedWorkers = computed(() => {
 		list = list.filter(w => w.attendance_percentage >= 90);
 	}
 
-	// 5. Sorting
+	// 5. Sorting with defensive safety checks
 	list.sort((a, b) => {
-		let valA = a[sortColumn.value];
-		let valB = b[sortColumn.value];
+		let valA = a[sortColumn.value] ?? "";
+		let valB = b[sortColumn.value] ?? "";
 
 		if (typeof valA === "string") {
 			valA = valA.toLowerCase();
-			valB = valB.toLowerCase();
+			valB = valB.toString().toLowerCase();
 		}
 
 		if (valA < valB) return sortDirection.value === "asc" ? -1 : 1;
@@ -161,6 +191,17 @@ const filteredAndSortedWorkers = computed(() => {
 	});
 
 	return list;
+});
+
+// Pagination Calculations
+const totalPages = computed(() => {
+	return Math.ceil(filteredAndSortedWorkers.value.length / pageSize.value) || 1;
+});
+
+const paginatedWorkers = computed(() => {
+	const start = (currentPage.value - 1) * pageSize.value;
+	const end = start + pageSize.value;
+	return filteredAndSortedWorkers.value.slice(start, end);
 });
 </script>
 
@@ -386,7 +427,7 @@ const filteredAndSortedWorkers = computed(() => {
 					</thead>
 					<tbody>
 						<tr 
-							v-for="worker in filteredAndSortedWorkers" 
+							v-for="worker in paginatedWorkers" 
 							:key="worker.worker_id"
 							class="table-row-item"
 							:class="{ 'row-at-risk': worker.attendance_percentage < 75 }"
@@ -399,7 +440,7 @@ const filteredAndSortedWorkers = computed(() => {
 								<span class="worker-fullname">{{ worker.name }}</span>
 							</td>
 							<td>
-								<span class="dept-badge">{{ worker.department }}</span>
+								<span class="dept-badge" :style="getDepartmentBadgeStyle(worker.department)">{{ worker.department }}</span>
 							</td>
 							<td class="numeric font-medium">{{ worker.days_present }} / {{ worker.total_days }}</td>
 							<td class="numeric font-semibold">
@@ -421,6 +462,78 @@ const filteredAndSortedWorkers = computed(() => {
 						</tr>
 					</tbody>
 				</table>
+
+				<!-- Pagination Controls -->
+				<div class="pagination-controls-container" v-if="filteredAndSortedWorkers.length > 0">
+					<div class="pagination-info">
+						Showing 
+						<span class="font-semibold">{{ (currentPage - 1) * pageSize + 1 }}</span> 
+						to 
+						<span class="font-semibold">{{ Math.min(currentPage * pageSize, filteredAndSortedWorkers.length) }}</span> 
+						of 
+						<span class="font-semibold">{{ filteredAndSortedWorkers.length }}</span> 
+						workers
+					</div>
+					<div class="pagination-actions">
+						<!-- Page Size selector -->
+						<div class="page-size-selector">
+							<span class="page-size-label">Rows per page:</span>
+							<select v-model="pageSize" class="page-size-select">
+								<option :value="5">5</option>
+								<option :value="10">10</option>
+								<option :value="25">25</option>
+								<option :value="50">50</option>
+							</select>
+						</div>
+						
+						<!-- Navigation buttons -->
+						<div class="page-buttons-group">
+							<button 
+								class="page-nav-btn" 
+								:disabled="currentPage === 1" 
+								@click="currentPage = 1"
+								title="First Page"
+							>
+								<i class="fa fa-angle-double-left"></i>
+							</button>
+							<button 
+								class="page-nav-btn" 
+								:disabled="currentPage === 1" 
+								@click="currentPage--"
+								title="Previous Page"
+							>
+								<i class="fa fa-angle-left"></i>
+							</button>
+							
+							<button 
+								v-for="page in totalPages" 
+								:key="page"
+								class="page-num-btn"
+								:class="{ active: page === currentPage }"
+								@click="currentPage = page"
+							>
+								{{ page }}
+							</button>
+
+							<button 
+								class="page-nav-btn" 
+								:disabled="currentPage === totalPages" 
+								@click="currentPage++"
+								title="Next Page"
+							>
+								<i class="fa fa-angle-right"></i>
+							</button>
+							<button 
+								class="page-nav-btn" 
+								:disabled="currentPage === totalPages" 
+								@click="currentPage = totalPages"
+								title="Last Page"
+							>
+								<i class="fa fa-angle-double-right"></i>
+							</button>
+						</div>
+					</div>
+				</div>
 
 				<!-- Empty State -->
 				<div class="empty-state-container" v-else>
@@ -961,6 +1074,24 @@ const filteredAndSortedWorkers = computed(() => {
 	overflow-x: auto;
 }
 
+/* Custom Scrollbar for modern aesthetic */
+.table-container::-webkit-scrollbar {
+	height: 6px;
+}
+
+.table-container::-webkit-scrollbar-track {
+	background: #f1f5f9;
+}
+
+.table-container::-webkit-scrollbar-thumb {
+	background: #cbd5e1;
+	border-radius: 3px;
+}
+
+.table-container::-webkit-scrollbar-thumb:hover {
+	background: #94a3b8;
+}
+
 .attendance-table {
 	width: 100%;
 	border-collapse: collapse;
@@ -1196,11 +1327,119 @@ const filteredAndSortedWorkers = computed(() => {
 	
 	.actions-wrapper {
 		width: 100%;
-		justify-content: space-between;
+	}
+}
+
+/* Pagination Controls Styling */
+.pagination-controls-container {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	padding: 16px 20px;
+	background: #ffffff;
+	border-top: 1px solid #e2e8f0;
+	flex-wrap: wrap;
+	gap: 16px;
+}
+
+.pagination-info {
+	font-size: 13px;
+	color: #64748b;
+}
+
+.pagination-actions {
+	display: flex;
+	align-items: center;
+	gap: 20px;
+	flex-wrap: wrap;
+}
+
+.page-size-selector {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.page-size-label {
+	font-size: 12px;
+	font-weight: 600;
+	color: #64748b;
+}
+
+.page-size-select {
+	height: 32px;
+	border: 1px solid #cbd5e1;
+	background: #f8fafc;
+	color: #0f172a;
+	padding: 0 8px;
+	border-radius: 8px;
+	font-size: 13px;
+	font-weight: 600;
+	outline: none;
+	cursor: pointer;
+	transition: all 0.2s ease;
+}
+
+.page-size-select:focus {
+	border-color: #6366f1;
+	background: #ffffff;
+}
+
+.page-buttons-group {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+}
+
+.page-nav-btn, .page-num-btn {
+	height: 32px;
+	min-width: 32px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	border: 1px solid #e2e8f0;
+	background: #ffffff;
+	color: #475569;
+	font-size: 13px;
+	font-weight: 600;
+	border-radius: 8px;
+	cursor: pointer;
+	transition: all 0.2s ease;
+}
+
+.page-nav-btn:hover:not(:disabled), .page-num-btn:hover {
+	background: #f1f5f9;
+	color: #0f172a;
+	border-color: #cbd5e1;
+}
+
+.page-num-btn.active {
+	background: #6366f1;
+	color: #ffffff;
+	border-color: #6366f1;
+}
+
+.page-nav-btn:disabled {
+	opacity: 0.4;
+	cursor: not-allowed;
+}
+
+@media (max-width: 768px) {
+	.pagination-controls-container {
+		flex-direction: column;
+		align-items: center;
+		text-align: center;
+		padding: 16px 12px;
 	}
 	
-	.btn-export, .btn-reset-filters {
-		flex: 1;
+	.pagination-actions {
+		flex-direction: column;
+		width: 100%;
+		gap: 12px;
+	}
+	
+	.page-buttons-group {
+		width: 100%;
 		justify-content: center;
 	}
 }

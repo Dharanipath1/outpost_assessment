@@ -44,7 +44,8 @@ app_license = "mit"
 
 # include js in doctype views
 doctype_js = {
-	"Work Order": "outpost_assessment/client_scripts/work_order.js"
+	"Work Order": "outpost_assessment/client_scripts/work_order.js",
+	"Purchase Order": "outpost_assessment/client_scripts/purchase_order.js"
 }
 doctype_list_js = {
 	"Production Request": "outpost_assessment/doctype/production_request/production_request_list.js"
@@ -157,6 +158,7 @@ doc_events = {
         ]
 	},
     "Purchase Order": {
+        "validate": "outpost_assessment.api.po_approval.enforce_rejection_comment",
         "on_update": "outpost_assessment.tasks.notify_po_rejection"
     }
 }
@@ -276,6 +278,9 @@ scheduler_events = {
 
 fixtures = [
     {"dt": "Custom Field", "filters": [["module", "=", "Outpost Assessment"]]},
-    {"dt": "Property Setter", "filters": [["module", "=", "Outpost Assessment"]]}
+    {"dt": "Property Setter", "filters": [["module", "=", "Outpost Assessment"]]},
+    {"dt": "Workflow", "filters": [["name", "=", "Purchase order Approval"]]},
+    {"dt": "Workflow State", "filters": [["workflow_state_name", "in", ["Draft", "Pending HoD Approval", "Pending Finance Approval", "Pending CEO Approval", "Approved", "Rejected", "Cancelled"]]]},
+    {"dt": "Workflow Action Master", "filters": [["workflow_action_name", "in", ["Approve", "Reject", "Submit for Approval", "Resubmit", "Cancel"]]]}
 ]
 

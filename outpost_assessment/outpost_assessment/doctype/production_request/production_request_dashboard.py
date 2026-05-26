@@ -7,6 +7,10 @@ def get_data():
             {
                 "label": _("Manufacturing"),
                 "items": ["Work Order"]
+            },
+            {
+                "label": _("Stock"),
+                "items": ["Material Request"]
             }
         ]
     }

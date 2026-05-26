@@ -28,23 +28,21 @@
   "column_break_rqvy",
   "wip_warehouse",
   "section_break_daoo",
+  "combine_items",
   "items",
   "section_break_grids",
   "get_sub_assembly_items",
-  "section_break_sub_table",
+  "use_existing_sub_assembly_stock",
   "sub_assemblies",
   "raw_materials_items_section",
   "get_raw_material",
-  "section_break_rm_table",
   "material_requirements",
-  "amended_from",
   "connections_tab"
  ],
  "fields": [
   {
    "fieldname": "section_break_metadata",
-   "fieldtype": "Section Break",
-   "label": "Information"
+   "fieldtype": "Section Break"
   },
   {
    "default": "PROD-REQ-.YYYY.-.#####",
@@ -63,6 +61,7 @@
    "reqd": 1
   },
   {
+   "default": "Now",
    "fieldname": "posting_time",
    "fieldtype": "Time",
    "label": "Posting Time",
@@ -102,6 +101,12 @@
    "label": "Customer",
    "options": "Customer",
    "reqd": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "combine_items",
+   "fieldtype": "Check",
+   "label": "Combine Duplicate Items"
   },
   {
    "default": "Draft",
@@ -179,13 +184,15 @@
    "label": "Sub Assembly Items"
   },
   {
+   "default": "1",
+   "fieldname": "use_existing_sub_assembly_stock",
+   "fieldtype": "Check",
+   "label": "Deduct Existing Sub-Assembly Stock"
+  },
+  {
    "fieldname": "get_sub_assembly_items",
    "fieldtype": "Button",
    "label": "Get Sub Assembly Items"
-  },
-  {
-   "fieldname": "section_break_sub_table",
-   "fieldtype": "Section Break"
   },
   {
    "fieldname": "sub_assemblies",
@@ -205,22 +212,10 @@
    "label": "Get Raw Materials"
   },
   {
-   "fieldname": "section_break_rm_table",
-   "fieldtype": "Section Break"
-  },
-  {
    "fieldname": "material_requirements",
    "fieldtype": "Table",
    "label": "Required Materials",
    "options": "Production Request Material"
-  },
-  {
-   "fieldname": "amended_from",
-   "fieldtype": "Link",
-   "label": "Amended From",
-   "options": "Production Request",
-   "print_hide": 1,
-   "read_only": 1
   },
   {
    "fieldname": "column_break_rqvy",
@@ -244,7 +239,7 @@
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-05-21 12:38:40.561494",
+ "modified": "2026-05-27 00:58:18.788018",
  "modified_by": "Administrator",
  "module": "Outpost Assessment",
  "name": "Production Request",

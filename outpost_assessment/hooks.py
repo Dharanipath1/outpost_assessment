@@ -201,8 +201,9 @@ doc_events = {
 # generated from the base implementation of the doctype dashboard,
 # along with any modifications made in other Frappe apps
 override_doctype_dashboards = {
-    "Work Order": ("outpost_assessment.outpost_assessment.overrides.work_order.get_data"),
-    "Stock Entry": ("outpost_assessment.outpost_assessment.overrides.stock_entry.get_data"),
+    "Work Order": "outpost_assessment.outpost_assessment.overrides.work_order.get_data",
+    "Stock Entry": "outpost_assessment.outpost_assessment.overrides.stock_entry.get_data",
+    "Material Request": "outpost_assessment.outpost_assessment.overrides.material_request.get_data",
 }
 # exempt linked doctypes from being automatically cancelled
 #

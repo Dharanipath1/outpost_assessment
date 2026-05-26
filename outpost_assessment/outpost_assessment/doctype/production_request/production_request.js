@@ -1,10 +1,10 @@
-// -*- coding: utf-8 -*-
-
 frappe.ui.form.on('Production Request', {
     setup: function (frm) {
         frm.set_query('item', 'items', function () {
             return {
-                query: 'outpost_assessment.outpost_assessment.doctype.production_request.production_request.item_query_filter'
+                filters: {
+                    include_item_in_manufacturing: 1
+                }
             };
         });
 
@@ -19,18 +19,13 @@ frappe.ui.form.on('Production Request', {
             };
         });
     },
-    onload: function (frm) {
-        if (!frm.doc.company) {
-            frm.set_value("company", frappe.defaults.get_user_default("company") || "Test");
+    items_add: function (frm, cdt, cdn) {
+        let row = locals[cdt][cdn];
+        if (frm.doc.fg_warehouse) {
+            frappe.model.set_value(cdt, cdn, 'fg_warehouse', frm.doc.fg_warehouse);
         }
-        if (!frm.doc.posting_date) {
-            frm.set_value("posting_date", frappe.datetime.get_today());
-        }
-        if (!frm.doc.posting_time) {
-            frm.set_value("posting_time", frappe.datetime.now_time());
-        }
-        if (!frm.doc.required_date) {
-            frm.set_value("required_date", frappe.datetime.get_today());
+        if (frm.doc.required_date) {
+            frappe.model.set_value(cdt, cdn, 'required_date', frm.doc.required_date);
         }
     },
     refresh: function (frm) {
@@ -150,55 +145,47 @@ frappe.ui.form.on('Production Request', {
                 d.show();
             }, __('Actions'));
         }
+ 
+        if (frm.doc.docstatus === 0 && !frm.is_new()) {
+            let has_shortage = false;
+            if (frm.doc.material_requirements) {
+                $.each(frm.doc.material_requirements, function (i, r) {
+                    if (flt(r.shortage_qty) > 0) {
+                        has_shortage = true;
+                        return false;
+                    }
+                });
+            }
 
-
+            if (has_shortage) {
+                frm.add_custom_button(__('Material Request for Shortage'), function () {
+                    frappe.call({
+                        method: "outpost_assessment.outpost_assessment.doctype.production_request.production_request.create_material_request_for_shortages",
+                        args: {
+                            docname: frm.doc.name
+                        },
+                        freeze: true,
+                        freeze_message: __('Creating Material Request...'),
+                        callback: function (r) {
+                            if (r && r.message) {
+                                let mr_name = r.message;
+                                let link = `<a href="/app/material-request/${mr_name}" target="_blank"><b>${mr_name}</b></a>`;
+                                frappe.msgprint({
+                                    title: __('Material Request Created'),
+                                    message: __('Material Request {0} has been created and submitted successfully.', [link]),
+                                    indicator: 'green'
+                                });
+                                frm.reload_doc();
+                            }
+                        }
+                    });
+                }, __('Create'));
+            }
+        }
+ 
         render_progress_bar(frm);
     },
-    company: function (frm) {
-        if (frm.doc.company) {
-            frappe.call({
-                method: "frappe.client.get_value",
-                args: {
-                    doctype: "Warehouse",
-                    filters: { company: frm.doc.company, name: ["like", "%Finished Goods%"], is_group: 0 },
-                    fieldname: "name"
-                },
-                callback: function (r) {
-                    if (r.message && r.message.name) {
-                        frm.set_value("fg_warehouse", r.message.name);
-                    }
-                }
-            });
 
-            frappe.call({
-                method: "frappe.client.get_value",
-                args: {
-                    doctype: "Warehouse",
-                    filters: { company: frm.doc.company, name: ["like", "%Work In Progress%"], is_group: 0 },
-                    fieldname: "name"
-                },
-                callback: function (r) {
-                    if (r.message && r.message.name) {
-                        frm.set_value("sub_assembly_warehouse", r.message.name);
-                    }
-                }
-            });
-
-            frappe.call({
-                method: "frappe.client.get_value",
-                args: {
-                    doctype: "Warehouse",
-                    filters: { company: frm.doc.company, name: ["like", "%Stores%"], is_group: 0 },
-                    fieldname: "name"
-                },
-                callback: function (r) {
-                    if (r.message && r.message.name) {
-                        frm.set_value("rm_warehouse", r.message.name);
-                    }
-                }
-            });
-        }
-    },
     fg_warehouse: function (frm) {
         if (frm.doc.fg_warehouse && frm.doc.items && frm.doc.items.length > 0) {
             $.each(frm.doc.items, function (i, row) {
@@ -246,11 +233,6 @@ frappe.ui.form.on('Production Request', {
         });
     },
 
-    combine_sub_items: function (frm) {
-        if (frm.doc.items && frm.doc.items.length > 0) {
-            frm.trigger("get_sub_assembly_items");
-        }
-    },
 
     get_raw_material: function (frm) {
         frappe.call({
@@ -291,7 +273,7 @@ function render_progress_bar(frm) {
 
     const items = frm.doc.items || [];
     const sub_assemblies = frm.doc.sub_assemblies || [];
-    
+
     if (!items.length || frm.doc.docstatus === 0) {
         $wrapper.html('<p class="text-muted small" style="padding:6px 0">'
             + __('Progress will be visible after submission.') + '</p>');
@@ -299,10 +281,10 @@ function render_progress_bar(frm) {
     }
 
     let blocks_html = '';
-    
-    const render_block = function(item_code, item_name, planned, produced, type_label) {
-        const pct      = planned > 0 ? Math.min(100, produced / planned * 100) : 0;
-        const pct_str  = pct.toFixed(1);
+
+    const render_block = function (item_code, item_name, planned, produced, type_label) {
+        const pct = planned > 0 ? Math.min(100, produced / planned * 100) : 0;
+        const pct_str = pct.toFixed(1);
 
         let bar_color = '#d1d8e0';          // grey  = 0 %
         if (pct >= 100) bar_color = '#2ecc71';  // green = done
@@ -340,10 +322,10 @@ function render_progress_bar(frm) {
 
     items.forEach(function (row) {
         blocks_html += render_block(
-            row.item, 
-            row.item_name, 
-            flt(row.production_qty), 
-            flt(row.produced_qty) || 0, 
+            row.item,
+            row.item_name,
+            flt(row.production_qty),
+            flt(row.produced_qty) || 0,
             __('FG')
         );
     });
@@ -351,10 +333,10 @@ function render_progress_bar(frm) {
     sub_assemblies.forEach(function (row) {
         if (flt(row.produce_qty) > 0) {
             blocks_html += render_block(
-                row.sub_assembly, 
+                row.sub_assembly,
                 '', // SA item name might not be fetched, could use blank or fetch it
-                flt(row.produce_qty), 
-                flt(row.produced_qty) || 0, 
+                flt(row.produce_qty),
+                flt(row.produced_qty) || 0,
                 __('Sub-Assembly')
             );
         }
@@ -367,23 +349,7 @@ frappe.ui.form.on('Production Request Item', {
     item: function (frm, cdt, cdn) {
         let row = locals[cdt][cdn];
 
-        frappe.model.set_value(cdt, cdn, 'bom_no', '');
-
         if (row.item) {
-            frappe.db.get_value('Item', row.item, ['item_name', 'stock_uom'], function (r) {
-                if (r && r.item_name) {
-                    frappe.model.set_value(cdt, cdn, 'item_name', r.item_name);
-                    frappe.model.set_value(cdt, cdn, 'stock_uom', r.stock_uom);
-                }
-            });
-
-            frappe.db.get_value('BOM', { item: row.item, is_active: 1, docstatus: 1 }, 'name', function (r) {
-                if (r && r.name) {
-                    frappe.model.set_value(cdt, cdn, 'bom_no', r.name);
-                } else {
-                    frappe.model.set_value(cdt, cdn, 'bom_no', '');
-                }
-            });
 
             if (!row.fg_warehouse && frm.doc.fg_warehouse) {
                 frappe.model.set_value(cdt, cdn, 'fg_warehouse', frm.doc.fg_warehouse);
@@ -408,7 +374,7 @@ frappe.ui.form.on('Production Request Item', {
             }
         }
     },
-    production_qty: function(frm, cdt, cdn) {
+    production_qty: function (frm, cdt, cdn) {
         frm.trigger("get_sub_assembly_items");
         frm.trigger("get_raw_material");
     },

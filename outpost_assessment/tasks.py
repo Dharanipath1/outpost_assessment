@@ -62,20 +62,22 @@ def send_delayed_work_order_reminders():
         frappe.logger().info("[Delayed WOs] No delayed Work Orders found today.")
         return
         
-    managers = frappe.db.sql("""
-        SELECT parent FROM `tabHas Role`
-        WHERE role = 'Manufacturing Manager' AND parenttype = 'User'
-        AND EXISTS (SELECT name FROM `tabUser` WHERE name = `tabHas Role`.parent AND enabled = 1)
-    """, as_dict=True)
-    
-    if not managers:
+    HasRole = frappe.qb.DocType("Has Role")
+    User = frappe.qb.DocType("User")
+    recipients = (
+        frappe.qb.from_(HasRole)
+        .join(User).on(User.name == HasRole.parent)
+        .select(HasRole.parent)
+        .where(HasRole.role == "Manufacturing Manager")
+        .where(HasRole.parenttype == "User")
+        .where(User.enabled == 1)
+        .run(pluck="parent")
+    )
+
+    if not recipients:
         frappe.logger().info("[Delayed WOs] No active Manufacturing Managers found to email.")
         return
         
-    recipients = [m.parent for m in managers]
-    
-    from frappe.utils.xlsxutils import make_xlsx
-
     html_rows = ""
     excel_data = [["Work Order", "Item", "Qty", "Expected Delivery", "Status"]]
     
@@ -247,13 +249,18 @@ def send_po_approval_reminders():
         if not pos:
             continue
             
-        users = frappe.db.sql("""
-            SELECT parent FROM `tabHas Role`
-            WHERE role = %s AND parenttype = 'User'
-            AND EXISTS (SELECT name FROM `tabUser` WHERE name = `tabHas Role`.parent AND enabled = 1)
-        """, (role,), as_dict=True)
-        
-        recipients = [u.parent for u in users]
+        HasRole = frappe.qb.DocType("Has Role")
+        User = frappe.qb.DocType("User")
+        recipients = (
+            frappe.qb.from_(HasRole)
+            .join(User).on(User.name == HasRole.parent)
+            .select(HasRole.parent)
+            .where(HasRole.role == role)
+            .where(HasRole.parenttype == "User")
+            .where(User.enabled == 1)
+            .run(pluck="parent")
+        )
+
         if not recipients:
             continue
             

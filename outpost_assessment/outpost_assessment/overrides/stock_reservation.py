@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 import frappe
 from frappe import _
 from frappe.utils import flt
@@ -216,7 +215,7 @@ def reserve_stock_for_production_request(pr_name):
             continue
 
         from erpnext.stock.doctype.stock_reservation_entry.stock_reservation_entry import get_available_qty_to_reserve
-        available_qty = get_available_qty_to_reserve(row.raw_material, pr.wip_warehouse)
+        available_qty = get_available_qty_to_reserve(row.raw_material, pr.rm_warehouse)
 
         if available_qty <= 0.0:
             continue
@@ -225,7 +224,7 @@ def reserve_stock_for_production_request(pr_name):
 
         sre = frappe.new_doc("Stock Reservation Entry")
         sre.item_code = row.raw_material
-        sre.warehouse = pr.wip_warehouse
+        sre.warehouse = pr.rm_warehouse
         sre.voucher_type = "Production Request"
         sre.voucher_no = pr.name
         sre.voucher_detail_no = row.name

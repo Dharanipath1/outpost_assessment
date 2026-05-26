@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 import frappe
 from frappe import _
 from frappe.utils import date_diff, getdate, today
@@ -150,36 +149,47 @@ def get_data(filters):
     for m in all_materials:
         materials_by_pr.setdefault(m.parent, []).append(m)
 
+    item_filters = {"parent": ["in", pr_names]}
+    if filters and filters.get("item_code"):
+        item_filters["item"] = filters.get("item_code")
+
     all_items = frappe.get_all(
         "Production Request Item",
-        filters={"parent": ["in", pr_names]},
+        filters=item_filters,
         fields=["parent", "item", "production_qty"]
     )
-    if filters and filters.get("item_code"):
-        all_items = [i for i in all_items if i.item == filters.get("item_code")]
 
     items_by_pr = {}
     for i in all_items:
         items_by_pr.setdefault(i.parent, []).append(i)
 
+    sa_filters = {"parent": ["in", pr_names]}
+    if filters and filters.get("item_code"):
+        sa_filters["sub_assembly"] = filters.get("item_code")
+
     all_sub_assemblies = frappe.get_all(
         "Production Request Sub Assembly",
-        filters={"parent": ["in", pr_names]},
+        filters=sa_filters,
         fields=["parent", "sub_assembly as item", "produce_qty as production_qty"]
     )
-    if filters and filters.get("item_code"):
-        all_sub_assemblies = [sa for sa in all_sub_assemblies if sa.item == filters.get("item_code")]
 
     sub_assemblies_by_pr = {}
     for sa in all_sub_assemblies:
         sub_assemblies_by_pr.setdefault(sa.parent, []).append(sa)
 
-    work_orders = frappe.db.sql("""
+    wo_conditions = ["production_request IN %(pr_names)s", "docstatus < 2"]
+    wo_values = {"pr_names": pr_names}
+    if filters and filters.get("status"):
+        if filters.get("status") != "Not Created":
+            wo_conditions.append("status = %(status)s")
+            wo_values["status"] = filters.get("status")
+
+    work_orders = frappe.db.sql(f"""
         SELECT production_request, production_item, status, produced_qty, docstatus
         FROM `tabWork Order`
-        WHERE production_request IN %s AND docstatus < 2
+        WHERE {" AND ".join(wo_conditions)}
         ORDER BY creation DESC
-    """, (pr_names,), as_dict=True)
+    """, wo_values, as_dict=True)
 
     wo_status_map = {}
     wo_completed_map = {}
@@ -214,11 +224,19 @@ def get_data(filters):
         pr_items = items_by_pr.get(pr.name, []) + sub_assemblies_by_pr.get(pr.name, [])
         
         for item in pr_items:
-            wo_status = wo_status_map.get((pr.name, item.item), "Not Created")
+            wo_status = wo_status_map.get((pr.name, item.item))
             
-            if filters and filters.get("status") and wo_status != filters.get("status"):
-                continue
+            # If status filter is set, ensure it matches
+            if filters and filters.get("status"):
+                filter_status = filters.get("status")
+                if filter_status == "Not Created":
+                    if wo_status is not None:
+                        continue
+                else:
+                    if wo_status != filter_status:
+                        continue
 
+            display_status = wo_status or "Not Created"
             completed = wo_completed_map.get((pr.name, item.item), 0.0)
             planned = item.production_qty or 0.0
             pending = max(0.0, planned - completed)
@@ -231,7 +249,7 @@ def get_data(filters):
                 "posting_date": pr.posting_date,
                 "customer": pr.customer,
                 "priority": pr.priority,
-                "status": wo_status,
+                "status": display_status,
                 "item_code": item.item,
                 "item_name": item_name,
                 "required_date": pr.required_date,

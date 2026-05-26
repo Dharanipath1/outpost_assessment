@@ -74,10 +74,11 @@ def process_payment_webhook(log_name, payload):
     frappe.set_user("Administrator")
 
     try:
-        if payload.get("status") != "success":
+        status = payload.get("payment_status") or payload.get("status")
+        if status != "success":
             frappe.get_doc("Payment Webhook Log", log_name).db_set({
                 "status": "Failed",
-                "error_message": _("Gateway reported payment as non-successful: {0}").format(payload.get("status", "unknown"))
+                "error_message": _("Gateway reported payment as non-successful: {0}").format(status or "unknown")
             })
             return
 
